@@ -10,6 +10,9 @@ import shutil
 # Initialize Flask app
 app = Flask(__name__)
 
+# Set a secret key for session management
+app.secret_key = 'your-super-secret-key-12345'  # In production, use a secure random key
+
 # Initialize Firebase Admin SDK with your service account credentials
 cred = credentials.Certificate('appmuahangnongsan-firebase-adminsdk-fbsvc-42a308608f.json')
 firebase_admin.initialize_app(cred, {
@@ -50,13 +53,18 @@ def get_image_path(drawable_path):
 
 @app.template_filter('datetime')
 def format_datetime(value):
-    """Format a timestamp to datetime."""
-    if not value:
-        return ''
-    # Convert milliseconds to seconds if necessary
-    if len(str(value)) > 10:
-        value = value / 1000
-    return datetime.fromtimestamp(value).strftime('%Y-%m-%d %H:%M:%S')
+    if not value:  # Handle None, empty string, 0, etc.
+        return 'No date'
+    try:
+        # If value is a string, try to convert to float first
+        if isinstance(value, str):
+            value = float(value)
+        # Convert milliseconds to seconds if timestamp is in milliseconds
+        if value > 1e10:  # Timestamps in milliseconds are typically > 1e10
+            value = value / 1000
+        return datetime.fromtimestamp(value).strftime('%Y-%m-%d %H:%M:%S')
+    except (ValueError, TypeError, AttributeError):
+        return str(value)  # Return original value if conversion fails
 
 
 def allowed_file(filename):
@@ -317,6 +325,41 @@ def update_category(category_id):
                             category=current_category)
 
 
+@app.route('/categories/<category_id>/delete', methods=['POST'])
+def delete_category(category_id):
+    """Delete a category and all its items"""
+    try:
+        # Get category details first to check if it exists
+        category_ref = db.reference(f'Data/Categories/{category_id}')
+        category = category_ref.get()
+        
+        if not category:
+            return render_template('Categories/categories.html',
+                                error='Category not found')
+            
+        # Delete all items in this category
+        categories_items_ref = db.reference(f'Data/CategoriesItems/{category_id}')
+        categories_items_ref.delete()
+        
+        # Delete the category itself
+        category_ref.delete()
+        
+        # Get updated list of categories
+        all_categories_ref = db.reference('Data/Categories')
+        categories = all_categories_ref.get() or {}
+        
+        return render_template('Categories/categories.html',
+                             success=f'Category "{category["Name"]}" has been deleted successfully',
+                             categories=categories)
+
+    except Exception as e:
+        print(f"Error deleting category: {e}")
+        import traceback
+        print(f"Traceback: {traceback.format_exc()}")
+        return render_template('Categories/categories.html',
+                             error=f'Error deleting category: {str(e)}')
+    
+    
 #################################################################################################################################
 #                                         ITEMS REQUEST MAPPING                                                                 #
 #################################################################################################################################
@@ -324,26 +367,33 @@ def update_category(category_id):
 
 @app.route('/all-items', methods=['GET'])
 def get_all_items():
-    """Get all items from Firebase"""
+    """Get all items from all categories"""
     try:
-        categories_items_ref = db.reference('Data/CategoriesItems')
-        categories_items = categories_items_ref.get()
+        # Get all categories first
+        categories_ref = db.reference('Data/Categories')
+        categories = categories_ref.get() or {}
         
-        if not categories_items:
-            return render_template('Items/all_items.html', error='No items found')
-            
+        # Get all items from all categories
+        categories_items_ref = db.reference('Data/CategoriesItems')
+        categories_items = categories_items_ref.get() or {}
+        
         # Process images for nested items
         for category_items in categories_items.values():
             for item in category_items.values():
                 if 'Image' in item:
                     item['Image'] = get_image_path(item['Image'])
         
-        return render_template('Items/all_items.html', items=categories_items)
+        return render_template('Items/all_items.html', 
+                             all_items=categories_items,
+                             categories=categories)
     except Exception as e:
         print(f"Error getting all items: {e}")
         import traceback
         print(f"Traceback: {traceback.format_exc()}")
-        return render_template('Items/all_items.html', error=str(e))
+        return render_template('Items/all_items.html', 
+                             error=str(e),
+                             categories={},
+                             all_items={})
     
 
 @app.route('/categories/<category_id>/add-item', methods=['GET'])
@@ -579,8 +629,43 @@ def update_item(category_id, item_id):
                             error=f'Error updating item: {str(e)}',
                             category_id=category_id,
                             item=current_item)
-    
-    
+
+@app.route('/categories/<category_id>/items/<item_id>/delete', methods=['POST'])
+def delete_item(category_id, item_id):
+    """Delete an item from a category"""
+    try:
+        # Get item details first to check if it exists
+        item_ref = db.reference(f'Data/CategoriesItems/{category_id}/{item_id}')
+        item = item_ref.get()
+        
+        if not item:
+            return render_template('Categories/categories_items.html',
+                                error='Item not found')
+            
+        # Delete the item
+        item_ref.delete()
+        
+        # Get updated list of items
+        items_ref = db.reference(f'Data/CategoriesItems/{category_id}')
+        items = items_ref.get() or {}
+        
+        # Get category details
+        category_ref = db.reference(f'Data/Categories/{category_id}')
+        category = category_ref.get()
+        
+        return render_template('Categories/categories_items.html',
+                             success=f'Item "{item["Name"]}" has been deleted successfully',
+                             items=items,
+                             category=category)
+
+    except Exception as e:
+        print(f"Error deleting item: {e}")
+        import traceback
+        print(f"Traceback: {traceback.format_exc()}")
+        return render_template('Categories/categories_items.html',
+                             error=f'Error deleting item: {str(e)}')
+
+        
 #################################################################################################################################
 #                                         COUPONS REQUEST MAPPING                                                               #
 #################################################################################################################################
@@ -786,6 +871,45 @@ def update_coupon(coupon_id):
         return render_template('Coupons/add_coupon.html',
                              error=f'Error updating coupon: {str(e)}')
     
+
+@app.route('/coupons/<coupon_id>/delete', methods=['POST'])
+def delete_coupon(coupon_id):
+    """Delete a coupon"""
+    try:
+        # Get coupon details first to check if it exists
+        coupon_ref = db.reference(f'Data/Coupons/{coupon_id}')
+        coupon = coupon_ref.get()
+        
+        if not coupon:
+            return render_template('Coupons/coupons.html',
+                                error='Coupon not found')
+        
+        # Check if coupon is expired
+        current_date = datetime.now().strftime('%Y-%m-%d')
+        if current_date <= coupon['endDate']:
+            return render_template('Coupons/coupons.html',
+                                error='Only expired coupons can be deleted',
+                                coupons=db.reference('Data/Coupons').get() or {})
+            
+        # Delete the coupon
+        coupon_ref.delete()
+        
+        # Get updated list of coupons
+        coupons_ref = db.reference('Data/Coupons')
+        coupons = coupons_ref.get() or {}
+        
+        return render_template('Coupons/coupons.html',
+                             success=f'Coupon "{coupon["description"]}" has been deleted successfully',
+                             coupons=coupons)
+
+    except Exception as e:
+        print(f"Error deleting coupon: {e}")
+        import traceback
+        print(f"Traceback: {traceback.format_exc()}")
+        return render_template('Coupons/coupons.html',
+                             error=f'Error deleting coupon: {str(e)}',
+                             coupons=db.reference('Data/Coupons').get() or {})
+    
     
 #################################################################################################################################
 #                                         LIKED ITEMS REQUEST MAPPING                                                           #
@@ -826,49 +950,36 @@ def get_liked_items():
 
 @app.route('/orders', methods=['GET'])
 def get_all_orders():
-    """Get all orders from Firebase"""
     try:
+        # Get orders from Firebase
         orders_ref = db.reference('Data/OrderBills')
         orders = orders_ref.get()
 
         if not orders:
-            return render_template('OrderBills/orders.html', error='No orders found')
-        
-        # Process orders
-        for order in orders.values():
-            # Convert timestamp to date string
-            if 'orderDate' in order:
-                timestamp = order['orderDate']
-                # Convert milliseconds to seconds if necessary
-                if len(str(timestamp)) > 10:
-                    timestamp = timestamp / 1000
-                order['orderDate'] = datetime.fromtimestamp(timestamp).strftime('%Y-%m-%d')
-            
-            # Ensure items is a dictionary
-            if 'items' in order:
-                if isinstance(order['items'], firebase_admin.db.Reference):
-                    order['items'] = order['items'].get() or {}
-                elif not isinstance(order['items'], dict):
-                    order['items'] = {}
-                    
-            # Ensure totalPrice exists and is a number
-            if 'totalPrice' not in order or not isinstance(order['totalPrice'], (int, float)):
-                # Calculate total price from items if available
-                if 'items' in order and order['items']:
-                    total = sum(
-                        float(item.get('salePrice', 0)) * int(item.get('quantity', 0))
-                        for item in order['items'].values()
-                    )
-                    order['totalPrice'] = total
-                else:
-                    order['totalPrice'] = 0.0
+            return render_template('OrderBills/orders.html', orders={})
 
-        return render_template('OrderBills/orders.html', orders=orders)
+        # Convert orders to dictionary if it's not already
+        if not isinstance(orders, dict):
+            orders = {}
+
+        # Sort orders by date (newest first) if orderDate exists
+        sorted_orders = {}
+        for order_id, order in orders.items():
+            if not isinstance(order, dict):
+                continue
+            sorted_orders[order_id] = order
+
+        sorted_orders = dict(
+            sorted(
+                sorted_orders.items(),
+                key=lambda x: float(x[1].get('orderDate', 0)) if x[1].get('orderDate') else 0,
+                reverse=True
+            )
+        )
+
+        return render_template('OrderBills/orders.html', orders=sorted_orders)
     except Exception as e:
-        print(f"Error getting orders: {e}")
-        import traceback
-        print(f"Traceback: {traceback.format_exc()}")
-        return render_template('OrderBills/orders.html', error=str(e))
+        return render_template('OrderBills/orders.html', error=str(e), orders={})
 
 
 @app.route('/orders/<order_id>/details', methods=['GET'])
@@ -906,6 +1017,38 @@ def get_order_details(order_id):
         import traceback
         print(f"Traceback: {traceback.format_exc()}")
         return render_template('OrderBills/order_details.html', error=str(e))
+
+
+@app.route('/orders/<order_id>/delete', methods=['POST'])
+def delete_order(order_id):
+    try:
+        # Get the order from the database
+        order_ref = db.reference('Data/OrderBills').child(order_id)
+        order = order_ref.get()
+
+        if not order:
+            flash('Order not found.', 'error')
+            return redirect(url_for('get_all_orders'))
+
+        # Check if the order is in CANCELLED status
+        if order.get('status') != 'CANCELLED':
+            flash('Only cancelled orders can be deleted.', 'error')
+            return redirect(url_for('get_all_orders'))
+
+        # Delete the order
+        order_ref.delete()
+
+        # Delete the order reference from the user's orderBills
+        if 'userUId' in order:
+            user_ref = db.reference(f'Data/Users/{order["userUId"]}/orderBills/{order_id}')
+            user_ref.delete()
+
+        flash('Order deleted successfully.', 'success')
+        return redirect(url_for('get_all_orders'))
+
+    except Exception as e:
+        flash(f'Error deleting order: {str(e)}', 'error')
+        return redirect(url_for('get_all_orders'))
 
 
 #################################################################################################################################
@@ -1117,6 +1260,7 @@ def get_user_orders(user_id):
         import traceback
         print(f"Traceback: {traceback.format_exc()}")
         return render_template('Users/user_orders.html', error=str(e))
+
 
 
 if __name__ == "__main__":
