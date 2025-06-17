@@ -1,6 +1,6 @@
 {% extends "navigation_bar.html" %}
 
-{% block title %}Add New Coupon{% endblock %}
+{% block title %}{{ 'Edit' if coupon else 'Add New' }} Coupon{% endblock %}
 
 {% block content %}
 <div class="container mt-4">
@@ -8,7 +8,7 @@
         <a href="{{ url_for('get_coupons') }}" class="btn btn-outline-secondary me-3">
             <i class="bi bi-arrow-left"></i> Back to Coupons
         </a>
-        <h1>Add New Coupon</h1>
+        <h1>{{ 'Edit' if coupon else 'Add New' }} Coupon</h1>
     </div>
 
     {% if error %}
@@ -25,59 +25,65 @@
 
     <div class="card">
         <div class="card-body">
-            <form method="POST" action="{{ url_for('add_coupon') }}">
+            <form method="POST" action="{{ url_for('update_coupon', coupon_id=coupon.Id) if coupon else url_for('add_coupon') }}">
                 <div class="mb-3">
                     <label for="couponId" class="form-label">Coupon ID</label>
-                    <input type="text" class="form-control" id="couponId" name="couponId" required>
-                    <small class="text-muted">Example: C001, C002, etc.</small>
+                    <input type="text" class="form-control" id="couponId" name="couponId" 
+                           value="{{ coupon.Id if coupon else '' }}"
+                           {{ 'readonly' if coupon else '' }}
+                           required>
                 </div>
 
                 <div class="mb-3">
                     <label for="description" class="form-label">Description</label>
-                    <textarea class="form-control" id="description" name="description" rows="2" required></textarea>
+                    <textarea class="form-control" id="description" name="description" rows="3" required>{{ coupon.description if coupon else '' }}</textarea>
                 </div>
 
-                <div class="row">
-                    <div class="col-md-6">
-                        <div class="mb-3">
-                            <label for="couponType" class="form-label">Discount Type</label>
-                            <select class="form-select" id="couponType" name="couponType" required>
-                                <option value="percentage">Percentage Discount</option>
-                                <option value="fixed">Fixed Amount</option>
-                            </select>
-                        </div>
-                    </div>
-                    <div class="col-md-6">
-                        <div class="mb-3">
-                            <label for="discountValue" class="form-label">Discount Value</label>
-                            <input type="number" class="form-control" id="discountValue" name="discountValue" step="0.01" required>
-                            <small class="text-muted">For percentage: 1-100, For fixed amount: any positive number</small>
-                        </div>
-                    </div>
+                <div class="mb-3">
+                    <label for="couponType" class="form-label">Discount Type</label>
+                    <select class="form-select" id="couponType" name="couponType" required>
+                        <option value="percentage" {{ 'selected' if coupon and coupon.couponType == 'percentage' else '' }}>Percentage Discount</option>
+                        <option value="fixed" {{ 'selected' if coupon and coupon.couponType == 'fixed' else '' }}>Fixed Amount</option>
+                    </select>
                 </div>
 
-                <div class="row">
-                    <div class="col-md-6">
-                        <div class="mb-3">
-                            <label for="startDate" class="form-label">Start Date</label>
-                            <input type="date" class="form-control" id="startDate" name="startDate" required>
-                        </div>
+                <div class="mb-3">
+                    <label for="discountValue" class="form-label">Discount Value</label>
+                    <div class="input-group">
+                        <input type="number" class="form-control" id="discountValue" name="discountValue" 
+                               step="0.01" min="0" max="100"
+                               value="{{ coupon.discountValue if coupon else '' }}"
+                               required>
+                        <span class="input-group-text" id="discountSymbol">%</span>
                     </div>
-                    <div class="col-md-6">
-                        <div class="mb-3">
-                            <label for="endDate" class="form-label">End Date</label>
-                            <input type="date" class="form-control" id="endDate" name="endDate" required>
-                        </div>
-                    </div>
+                    <div class="form-text" id="discountHelp">For percentage, enter a value between 0 and 100. For fixed amount, enter the dollar value.</div>
+                </div>
+
+                <div class="mb-3">
+                    <label for="startDate" class="form-label">Start Date</label>
+                    <input type="date" class="form-control" id="startDate" name="startDate" 
+                           value="{{ coupon.startDate if coupon else '' }}"
+                           required>
+                </div>
+
+                <div class="mb-3">
+                    <label for="endDate" class="form-label">End Date</label>
+                    <input type="date" class="form-control" id="endDate" name="endDate" 
+                           value="{{ coupon.endDate if coupon else '' }}"
+                           required>
                 </div>
 
                 <div class="mb-3">
                     <label for="productId" class="form-label">Product ID</label>
-                    <input type="text" class="form-control" id="productId" name="productId" required>
-                    <small class="text-muted">Format: category_id/item_id (e.g., beverages/item1)</small>
+                    <input type="text" class="form-control" id="productId" name="productId" 
+                           value="{{ coupon.productId if coupon else '' }}"
+                           required>
+                    <div class="form-text">Format: category_id/item_id (e.g., beverages/item1)</div>
                 </div>
 
-                <button type="submit" class="btn btn-primary">Add Coupon</button>
+                <button type="submit" class="btn btn-primary">
+                    <i class="bi bi-check-lg"></i> {{ 'Update' if coupon else 'Add' }} Coupon
+                </button>
             </form>
         </div>
     </div>
@@ -98,18 +104,42 @@
 
 <script>
 document.addEventListener('DOMContentLoaded', function() {
-    // Set minimum date as today for start date and end date
-    const today = new Date().toISOString().split('T')[0];
-    document.getElementById('startDate').min = today;
-    document.getElementById('endDate').min = today;
+    const couponType = document.getElementById('couponType');
+    const discountSymbol = document.getElementById('discountSymbol');
+    const discountValue = document.getElementById('discountValue');
+    const discountHelp = document.getElementById('discountHelp');
+    const startDate = document.getElementById('startDate');
+    const endDate = document.getElementById('endDate');
 
-    // Update end date min when start date changes
-    document.getElementById('startDate').addEventListener('change', function() {
-        document.getElementById('endDate').min = this.value;
-        if (document.getElementById('endDate').value < this.value) {
-            document.getElementById('endDate').value = this.value;
+    function updateDiscountField() {
+        if (couponType.value === 'percentage') {
+            discountSymbol.textContent = '%';
+            discountValue.max = 100;
+            discountHelp.textContent = 'Enter a value between 0 and 100';
+        } else {
+            discountSymbol.textContent = '$';
+            discountValue.max = '';
+            discountHelp.textContent = 'Enter the dollar amount';
         }
-    });
+    }
+
+    couponType.addEventListener('change', updateDiscountField);
+    updateDiscountField();
+
+    // Validate dates
+    function validateDates() {
+        const start = new Date(startDate.value);
+        const end = new Date(endDate.value);
+        
+        if (end < start) {
+            endDate.setCustomValidity('End date must be after start date');
+        } else {
+            endDate.setCustomValidity('');
+        }
+    }
+
+    startDate.addEventListener('change', validateDates);
+    endDate.addEventListener('change', validateDates);
 });
 </script>
 {% endblock %}
