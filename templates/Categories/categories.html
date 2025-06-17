@@ -1,0 +1,80 @@
+{% extends "navigation_bar.html" %}
+
+{% block title %}Categories{% endblock %}
+
+{% block content %}
+<div class="container mt-4">
+    <h1 class="mb-4">Product Categories</h1>
+
+    {% if error %}
+    <div class="alert alert-danger" role="alert">
+        {{ error }}
+    </div>
+    {% endif %}
+
+    {% if categories %}
+    <div class="row row-cols-1 row-cols-md-3 g-4">
+        {% for category_id, category in categories.items() %}
+        <div class="col">
+            <a href="{{ url_for('get_categories_items', category_id=category_id) }}" class="text-decoration-none">
+                <div class="card h-100">
+                    <img src="{{ category.Image }}" 
+                         class="card-img-top" 
+                         alt="{{ category.Name }}">
+                    <div class="card-body">
+                        <h5 class="card-title">{{ category.Name }}</h5>
+                        <p class="card-text">
+                            <strong>ID:</strong> {{ category.Id }}<br>
+                            {% if category.Season %}
+                            <strong>Season:</strong> {{ category.Season | title }}<br>
+                            {% endif %}
+                        </p>
+                    </div>
+                </div>
+            </a>
+        </div>
+        {% endfor %}
+    </div>
+    {% else %}
+    <div class="alert alert-info" role="alert">
+        No categories found.
+    </div>
+    {% endif %}
+</div>
+{% endblock %}
+
+{% block styles %}
+<style>
+    .card {
+        transition: transform 0.2s;
+        box-shadow: 0 4px 6px rgba(0, 0, 0, 0.1);
+    }
+    
+    .card:hover {
+        transform: translateY(-5px);
+    }
+
+    .card-img-top {
+        height: 200px;
+        object-fit: cover;
+    }
+
+    .card-title {
+        color: #2c3e50;
+        font-weight: 600;
+    }
+
+    .card-text {
+        color: #34495e;
+    }
+
+    /* Ensure text color stays consistent when using card as link */
+    a .card-title {
+        color: #2c3e50;
+    }
+    
+    a .card-text {
+        color: #34495e;
+    }
+</style>
+{% endblock %}
