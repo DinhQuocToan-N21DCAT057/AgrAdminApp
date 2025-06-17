@@ -5,11 +5,16 @@
 {% block content %}
 <div class="container mt-4">
     {% if category %}
-    <div class="d-flex align-items-center mb-4">
-        <a href="{{ url_for('get_categories') }}" class="btn btn-outline-secondary me-3">
-            <i class="bi bi-arrow-left"></i> Back to Categories
+    <div class="d-flex align-items-center justify-content-between mb-4">
+        <div class="d-flex align-items-center">
+            <a href="{{ url_for('get_categories') }}" class="btn btn-outline-secondary me-3">
+                <i class="bi bi-arrow-left"></i> Back to Categories
+            </a>
+            <h1 class="mb-0">{{ category.Name }} Items</h1>
+        </div>
+        <a href="{{ url_for('show_add_item_form', category_id=category.Id) }}" class="btn btn-primary">
+            <i class="bi bi-plus-lg"></i> Add Item
         </a>
-        <h1 class="mb-0">{{ category.Name }} Items</h1>
     </div>
     {% endif %}
 

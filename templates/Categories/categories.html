@@ -12,6 +12,8 @@
     </div>
     {% endif %}
 
+    <a href="{{ url_for('show_add_category_form') }}" class="btn btn-primary mb-4">Add Category</a>
+
     {% if categories %}
     <div class="row row-cols-1 row-cols-md-3 g-4">
         {% for category_id, category in categories.items() %}
