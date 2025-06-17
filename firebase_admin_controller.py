@@ -1,9 +1,11 @@
-from flask import Flask, jsonify, render_template, url_for
+from flask import Flask, jsonify, render_template, url_for, request, redirect, flash
 import firebase_admin
 from firebase_admin import credentials
 from firebase_admin import db
 from datetime import datetime
 import os
+from werkzeug.utils import secure_filename
+import shutil
 
 # Initialize Flask app
 app = Flask(__name__)
@@ -13,6 +15,12 @@ cred = credentials.Certificate('appmuahangnongsan-firebase-adminsdk-fbsvc-42a308
 firebase_admin.initialize_app(cred, {
     'databaseURL': 'https://appmuahangnongsan-default-rtdb.asia-southeast1.firebasedatabase.app'
 })
+
+# Add these constants after the app initialization
+UPLOAD_FOLDER = 'static/images'
+ALLOWED_EXTENSIONS = {'png', 'jpg', 'jpeg'}
+app.config['UPLOAD_FOLDER'] = UPLOAD_FOLDER
+app.config['MAX_CONTENT_LENGTH'] = 2 * 1024 * 1024  # 2MB max file size
 
 #################################################################################################################################
 #                                         UTILITIES                                                                             #
@@ -50,6 +58,9 @@ def format_datetime(value):
         value = value / 1000
     return datetime.fromtimestamp(value).strftime('%Y-%m-%d %H:%M:%S')
 
+
+def allowed_file(filename):
+    return '.' in filename and filename.rsplit('.', 1)[1].lower() in ALLOWED_EXTENSIONS
 
 
 #################################################################################################################################
@@ -124,6 +135,93 @@ def get_categories_items(category_id):
         import traceback
         print(f"Traceback: {traceback.format_exc()}")
         return render_template('Categories/categories_items.html', error=str(e))
+
+
+@app.route('/categories/add', methods=['GET'])
+def show_add_category_form():
+    """Display the form to add a new category"""
+    return render_template('Categories/add_category.html')
+
+
+@app.route('/categories/add', methods=['POST'])
+def add_category():
+    """Handle the form submission to add a new category"""
+    try:
+        category_id = request.form.get('categoryId')
+        category_name = request.form.get('categoryName')
+        season = request.form.get('season')
+        
+        # Validate required fields
+        if not all([category_id, category_name, season]):
+            return render_template('Categories/add_category.html', 
+                                error='All fields are required')
+
+        # Check if category already exists
+        categories_ref = db.reference('Data/Categories')
+        if categories_ref.child(category_id).get():
+            return render_template('Categories/add_category.html', 
+                                error='Category ID already exists')
+
+        # Handle image upload
+        if 'categoryImage' not in request.files:
+            return render_template('Categories/add_category.html', 
+                                error='No image file provided')
+            
+        file = request.files['categoryImage']
+        if file.filename == '':
+            return render_template('Categories/add_category.html', 
+                                error='No image file selected')
+            
+        if not allowed_file(file.filename):
+            return render_template('Categories/add_category.html', 
+                                error='Invalid file type. Only PNG and JPEG allowed')
+
+        # Save the image
+        filename = secure_filename(file.filename)
+        base_name = os.path.splitext(filename)[0]
+        file_path = os.path.join(app.config['UPLOAD_FOLDER'], f"{base_name}.png")
+        
+        # Create directory if it doesn't exist
+        os.makedirs(app.config['UPLOAD_FOLDER'], exist_ok=True)
+        
+        # Save and convert to PNG if necessary
+        file.save(file_path)
+
+        # Create new category in Firebase
+        new_category = {
+            'Id': category_id,
+            'Name': category_name,
+            'Season': season.lower(),
+            'Image': f"drawable/{base_name}"
+        }
+        
+        # Initialize the category in Categories
+        categories_ref.child(category_id).set(new_category)
+        
+        # Initialize the category in CategoriesItems with a placeholder structure
+        categories_items_ref = db.reference('Data/CategoriesItems')
+        placeholder_item = {
+            'Id': f"{category_id}_placeholder",
+            'Name': f"Placeholder for {category_name}",
+            'Description': "This is a placeholder item. You can delete it after adding real items.",
+            'Price': 0.0,
+            'Unit': "unit",
+            'Inventory': 0,
+            'Image': "drawable/placeholder",
+            'Type': category_id,
+            'Quantity': 0
+        }
+        categories_items_ref.child(category_id).child("placeholder").set(placeholder_item)
+
+        return render_template('Categories/add_category.html', 
+                            success='Category added successfully')
+
+    except Exception as e:
+        print(f"Error adding category: {e}")
+        import traceback
+        print(f"Traceback: {traceback.format_exc()}")
+        return render_template('Categories/add_category.html', 
+                            error=f'Error adding category: {str(e)}')
     
 
 #################################################################################################################################
@@ -154,6 +252,118 @@ def get_all_items():
         print(f"Traceback: {traceback.format_exc()}")
         return render_template('Items/all_items.html', error=str(e))
     
+
+@app.route('/categories/<category_id>/add-item', methods=['GET'])
+def show_add_item_form(category_id):
+    """Display the form to add a new item to a specific category"""
+    try:
+        # Get category details for display
+        category_ref = db.reference(f'Data/Categories/{category_id}')
+        category = category_ref.get()
+        
+        if not category:
+            return render_template('Categories/add_item.html', 
+                                error='Category not found')
+            
+        return render_template('Categories/add_item.html',
+                             category_id=category_id,
+                             category_name=category['Name'])
+    except Exception as e:
+        print(f"Error showing add item form: {e}")
+        import traceback
+        print(f"Traceback: {traceback.format_exc()}")
+        return render_template('Categories/add_item.html', 
+                            error=str(e))
+
+@app.route('/categories/<category_id>/add-item', methods=['POST'])
+def add_item(category_id):
+    """Handle the form submission to add a new item to a specific category"""
+    try:
+        # Get form data
+        item_id = request.form.get('itemId')
+        item_name = request.form.get('itemName')
+        description = request.form.get('description')
+        price = request.form.get('price')
+        unit = request.form.get('unit')
+        inventory = request.form.get('inventory')
+        
+        # Validate required fields
+        if not all([item_id, item_name, description, price, unit, inventory]):
+            return render_template('Categories/add_item.html',
+                                error='All fields are required',
+                                category_id=category_id)
+
+        # Handle image upload
+        if 'itemImage' not in request.files:
+            return render_template('Categories/add_item.html',
+                                error='No image file provided',
+                                category_id=category_id)
+            
+        file = request.files['itemImage']
+        if file.filename == '':
+            return render_template('Categories/add_item.html',
+                                error='No image file selected',
+                                category_id=category_id)
+            
+        if not allowed_file(file.filename):
+            return render_template('Categories/add_item.html',
+                                error='Invalid file type. Only PNG and JPEG allowed',
+                                category_id=category_id)
+
+        # Save the image
+        filename = secure_filename(file.filename)
+        base_name = os.path.splitext(filename)[0]
+        file_path = os.path.join(app.config['UPLOAD_FOLDER'], f"{base_name}.png")
+        
+        # Create directory if it doesn't exist
+        os.makedirs(app.config['UPLOAD_FOLDER'], exist_ok=True)
+        
+        # Save and convert to PNG if necessary
+        file.save(file_path)
+
+        # Reference to CategoriesItems/<category_id>
+        categories_items_ref = db.reference('Data/CategoriesItems')
+        category_items = categories_items_ref.child(category_id).get() or {}
+        
+        # Check if item ID already exists in this category
+        if item_id in category_items:
+            return render_template('Categories/add_item.html',
+                                error='Item ID already exists in this category',
+                                category_id=category_id)
+
+        # Create new item
+        new_item = {
+            'Id': item_id,
+            'Name': item_name,
+            'Description': description,
+            'Price': float(price),
+            'Unit': unit,
+            'Inventory': int(inventory),
+            'Image': f"drawable/{base_name}",
+            'Type': category_id,
+            'Quantity': 0  # Initial quantity in cart
+        }
+        
+        # Add the item to the correct category in CategoriesItems
+        categories_items_ref.child(category_id).child(item_id).set(new_item)
+
+        # Get category name for display
+        category_ref = db.reference(f'Data/Categories/{category_id}')
+        category = category_ref.get()
+        
+        return render_template('Categories/add_item.html',
+                            success='Item added successfully',
+                            category_id=category_id,
+                            category_name=category['Name'])
+
+    except Exception as e:
+        print(f"Error adding item: {e}")
+        import traceback
+        print(f"Traceback: {traceback.format_exc()}")
+        return render_template('Categories/add_item.html',
+                            error=f'Error adding item: {str(e)}',
+                            category_id=category_id)
+
 
 #################################################################################################################################
 #                                         COUPONS REQUEST MAPPING                                                               #
@@ -186,6 +396,83 @@ def get_coupons():
         import traceback
         print(f"Traceback: {traceback.format_exc()}")
         return render_template('Coupons/coupons.html', error=str(e))
+
+
+@app.route('/coupons/add', methods=['GET'])
+def show_add_coupon_form():
+    """Display the form to add a new coupon"""
+    return render_template('Coupons/add_coupon.html')
+
+
+@app.route('/coupons/add', methods=['POST'])
+def add_coupon():
+    """Handle the form submission to add a new coupon"""
+    try:
+        # Get form data
+        coupon_id = request.form.get('couponId')
+        description = request.form.get('description')
+        coupon_type = request.form.get('couponType')
+        discount_value = request.form.get('discountValue')
+        start_date = request.form.get('startDate')
+        end_date = request.form.get('endDate')
+        product_id = request.form.get('productId')
+
+        # Validate required fields
+        if not all([coupon_id, description, coupon_type, discount_value, start_date, end_date, product_id]):
+            return render_template('Coupons/add_coupon.html',
+                                error='All fields are required')
+
+        # Validate discount value
+        try:
+            discount_value = float(discount_value)
+            if discount_value <= 0:
+                raise ValueError("Discount value must be positive")
+            if coupon_type == 'percentage' and discount_value > 100:
+                raise ValueError("Percentage discount cannot exceed 100%")
+        except ValueError as e:
+            return render_template('Coupons/add_coupon.html',
+                                error=str(e))
+
+        # Validate dates
+        if end_date < start_date:
+            return render_template('Coupons/add_coupon.html',
+                                error='End date must be after start date')
+
+        # Check if coupon ID already exists
+        coupons_ref = db.reference('Data/Coupons')
+        if coupons_ref.child(coupon_id).get():
+            return render_template('Coupons/add_coupon.html',
+                                error='Coupon ID already exists')
+
+        # Validate product ID exists
+        category_id, item_id = product_id.split('/')
+        categories_items_ref = db.reference(f'Data/CategoriesItems/{category_id}')
+        if not categories_items_ref.child(item_id).get():
+            return render_template('Coupons/add_coupon.html',
+                                error='Product ID does not exist')
+
+        # Create new coupon in Firebase
+        new_coupon = {
+            'Id': coupon_id,
+            'description': description,
+            'couponType': coupon_type,
+            'discountValue': discount_value,
+            'startDate': start_date,
+            'endDate': end_date,
+            'productId': product_id
+        }
+        
+        coupons_ref.child(coupon_id).set(new_coupon)
+
+        return render_template('Coupons/add_coupon.html',
+                            success='Coupon added successfully')
+
+    except Exception as e:
+        print(f"Error adding coupon: {e}")
+        import traceback
+        print(f"Traceback: {traceback.format_exc()}")
+        return render_template('Coupons/add_coupon.html',
+                            error=f'Error adding coupon: {str(e)}')
 
 
 #################################################################################################################################
@@ -518,7 +805,7 @@ def get_user_orders(user_id):
         import traceback
         print(f"Traceback: {traceback.format_exc()}")
         return render_template('Users/user_orders.html', error=str(e))
-
+    
 
 if __name__ == "__main__":
     app.run(debug=True)
