@@ -1,0 +1,231 @@
+{% extends "navigation_bar.html" %}
+
+{% block title %}Orders{% endblock %}
+
+{% block content %}
+<div class="container mt-4">
+    <h1 class="mb-4">Orders Management</h1>
+
+    {% if error %}
+    <div class="alert alert-danger" role="alert">
+        {{ error }}
+    </div>
+    {% else %}
+        <!-- Search and Filter Section -->
+        <div class="row mb-4">
+            <div class="col-md-4">
+                <div class="input-group">
+                    <input type="text" id="searchInput" class="form-control" placeholder="Search orders...">
+                    <button class="btn btn-outline-secondary" type="button" onclick="searchOrders()">
+                        <i class="bi bi-search"></i> Search
+                    </button>
+                </div>
+            </div>
+            <div class="col-md-4">
+                <select class="form-select" id="statusFilter" onchange="filterOrders()">
+                    <option value="all">All Status</option>
+                    <option value="PENDING">Pending</option>
+                    <option value="PAID">Paid</option>
+                    <option value="CANCELLED">Cancelled</option>
+                </select>
+            </div>
+            <div class="col-md-4">
+                <select class="form-select" id="sortOption" onchange="sortOrders()">
+                    <option value="date-desc">Date (Newest First)</option>
+                    <option value="date-asc">Date (Oldest First)</option>
+                    <option value="price-desc">Price (High to Low)</option>
+                    <option value="price-asc">Price (Low to High)</option>
+                </select>
+            </div>
+        </div>
+
+        <!-- Orders Display -->
+        {% if orders %}
+        <div class="table-responsive">
+            <table class="table table-hover" id="ordersTable">
+                <thead class="table-light">
+                    <tr>
+                        <th>Order ID</th>
+                        <th>Date</th>
+                        <th>Status</th>
+                        <th>Total Items</th>
+                        <th>Total Price</th>
+                        <th>User ID</th>
+                        <th>Actions</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    {% for order_id, order in orders.items() %}
+                    <tr class="order-row" 
+                        data-order-id="{{ order_id }}"
+                        data-status="{{ order.status }}"
+                        data-date="{{ order.orderDate }}"
+                        data-price="{{ order.totalPrice }}">
+                        <td>{{ order_id }}</td>
+                        <td>{{ order.orderDate }}</td>
+                        <td>
+                            {% if order.status == 'PENDING' %}
+                            <span class="badge bg-warning text-dark">Pending</span>
+                            {% elif order.status == 'PAID' %}
+                            <span class="badge bg-success">Paid</span>
+                            {% elif order.status == 'CANCELLED' %}
+                            <span class="badge bg-danger">Cancelled</span>
+                            {% else %}
+                            <span class="badge bg-secondary">{{ order.status }}</span>
+                            {% endif %}
+                        </td>
+                        <td>
+                            {% if order.items is mapping %}
+                                {{ order.items|length }}
+                            {% elif order.items is iterable and order.items is not string %}
+                                {{ order.items|length }}
+                            {% else %}
+                                0
+                            {% endif %}
+                        </td>
+                        <td>
+                            {% if order.totalPrice is defined %}
+                                ${{ "%.2f"|format(order.totalPrice|float) }}
+                            {% else %}
+                                $0.00
+                            {% endif %}
+                        </td>
+                        <td>{{ order.userUId }}</td>
+                        <td>
+                            <a href="{{ url_for('get_order_details', order_id=order_id) }}" 
+                               class="btn btn-sm btn-outline-primary">
+                                <i class="bi bi-eye"></i> View
+                            </a>
+                        </td>
+                    </tr>
+                    {% endfor %}
+                </tbody>
+            </table>
+        </div>
+        {% else %}
+        <div class="alert alert-info" role="alert">
+            No orders available.
+        </div>
+        {% endif %}
+
+        <!-- No Results Message -->
+        <div id="noResults" class="alert alert-info d-none" role="alert">
+            No orders found matching your criteria.
+        </div>
+    {% endif %}
+</div>
+{% endblock %}
+
+{% block styles %}
+<style>
+    .table {
+        box-shadow: 0 2px 4px rgba(0, 0, 0, 0.1);
+    }
+
+    .table thead th {
+        background-color: #f8f9fa;
+        border-bottom: 2px solid #dee2e6;
+    }
+
+    .table tbody tr:hover {
+        background-color: #f5f5f5;
+    }
+
+    .badge {
+        font-size: 0.85rem;
+        padding: 0.35em 0.65em;
+    }
+
+    .btn-sm {
+        padding: 0.25rem 0.5rem;
+        font-size: 0.875rem;
+    }
+</style>
+{% endblock %}
+
+{% block scripts %}
+<!-- Bootstrap Icons -->
+<link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/bootstrap-icons@1.7.2/font/bootstrap-icons.css">
+
+<script>
+function searchOrders() {
+    const searchTerm = document.getElementById('searchInput').value.toLowerCase();
+    const rows = document.getElementsByClassName('order-row');
+    let hasVisibleItems = false;
+
+    for (let row of rows) {
+        const orderId = row.getAttribute('data-order-id').toLowerCase();
+        const userId = row.cells[5].textContent.toLowerCase();
+        const shouldShow = orderId.includes(searchTerm) || userId.includes(searchTerm);
+        
+        if (shouldShow && isOrderMatchingFilters(row)) {
+            row.style.display = '';
+            hasVisibleItems = true;
+        } else {
+            row.style.display = 'none';
+        }
+    }
+
+    document.getElementById('noResults').classList.toggle('d-none', hasVisibleItems);
+}
+
+function filterOrders() {
+    const rows = document.getElementsByClassName('order-row');
+    let hasVisibleItems = false;
+
+    for (let row of rows) {
+        const shouldShow = isOrderMatchingFilters(row);
+        row.style.display = shouldShow ? '' : 'none';
+        if (shouldShow) hasVisibleItems = true;
+    }
+
+    document.getElementById('noResults').classList.toggle('d-none', hasVisibleItems);
+}
+
+function isOrderMatchingFilters(row) {
+    const statusFilter = document.getElementById('statusFilter').value;
+    const orderStatus = row.getAttribute('data-status');
+
+    if (statusFilter !== 'all' && orderStatus !== statusFilter) {
+        return false;
+    }
+
+    return true;
+}
+
+function sortOrders() {
+    const sortOption = document.getElementById('sortOption').value;
+    const tbody = document.querySelector('#ordersTable tbody');
+    const rows = Array.from(tbody.getElementsByClassName('order-row'));
+
+    rows.sort((a, b) => {
+        switch(sortOption) {
+            case 'date-desc':
+                return b.getAttribute('data-date').localeCompare(a.getAttribute('data-date'));
+            case 'date-asc':
+                return a.getAttribute('data-date').localeCompare(b.getAttribute('data-date'));
+            case 'price-desc':
+                return parseFloat(b.getAttribute('data-price')) - parseFloat(a.getAttribute('data-price'));
+            case 'price-asc':
+                return parseFloat(a.getAttribute('data-price')) - parseFloat(b.getAttribute('data-price'));
+            default:
+                return 0;
+        }
+    });
+
+    rows.forEach(row => tbody.appendChild(row));
+}
+
+// Add event listener for search input
+document.getElementById('searchInput').addEventListener('keyup', function(event) {
+    if (event.key === 'Enter') {
+        searchOrders();
+    }
+});
+
+// Initial sort
+document.addEventListener('DOMContentLoaded', function() {
+    sortOrders();
+});
+</script>
+{% endblock %}
