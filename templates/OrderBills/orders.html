@@ -10,109 +10,154 @@
     <div class="alert alert-danger" role="alert">
         {{ error }}
     </div>
-    {% else %}
-        <!-- Search and Filter Section -->
-        <div class="row mb-4">
-            <div class="col-md-4">
-                <div class="input-group">
-                    <input type="text" id="searchInput" class="form-control" placeholder="Search orders...">
-                    <button class="btn btn-outline-secondary" type="button" onclick="searchOrders()">
-                        <i class="bi bi-search"></i> Search
-                    </button>
-                </div>
-            </div>
-            <div class="col-md-4">
-                <select class="form-select" id="statusFilter" onchange="filterOrders()">
-                    <option value="all">All Status</option>
-                    <option value="PENDING">Pending</option>
-                    <option value="PAID">Paid</option>
-                    <option value="CANCELLED">Cancelled</option>
-                </select>
-            </div>
-            <div class="col-md-4">
-                <select class="form-select" id="sortOption" onchange="sortOrders()">
-                    <option value="date-desc">Date (Newest First)</option>
-                    <option value="date-asc">Date (Oldest First)</option>
-                    <option value="price-desc">Price (High to Low)</option>
-                    <option value="price-asc">Price (Low to High)</option>
-                </select>
+    {% endif %}
+
+    {% if success %}
+    <div class="alert alert-success" role="alert">
+        {{ success }}
+    </div>
+    {% endif %}
+
+    <!-- Search and Filter Section -->
+    <div class="row mb-4">
+        <div class="col-md-4">
+            <div class="input-group">
+                <input type="text" id="searchInput" class="form-control" placeholder="Search orders...">
+                <button class="btn btn-outline-secondary" type="button" onclick="searchOrders()">
+                    <i class="bi bi-search"></i> Search
+                </button>
             </div>
         </div>
+        <div class="col-md-4">
+            <select class="form-select" id="statusFilter" onchange="filterOrders()">
+                <option value="all">All Status</option>
+                <option value="PENDING">Pending</option>
+                <option value="PAID">Paid</option>
+                <option value="CANCELLED">Cancelled</option>
+            </select>
+        </div>
+        <div class="col-md-4">
+            <select class="form-select" id="sortOption" onchange="sortOrders()">
+                <option value="date-desc">Date (Newest First)</option>
+                <option value="date-asc">Date (Oldest First)</option>
+                <option value="price-desc">Price (High to Low)</option>
+                <option value="price-asc">Price (Low to High)</option>
+            </select>
+        </div>
+    </div>
 
-        <!-- Orders Display -->
-        {% if orders %}
-        <div class="table-responsive">
-            <table class="table table-hover" id="ordersTable">
-                <thead class="table-light">
-                    <tr>
-                        <th>Order ID</th>
-                        <th>Date</th>
-                        <th>Status</th>
-                        <th>Total Items</th>
-                        <th>Total Price</th>
-                        <th>User ID</th>
-                        <th>Actions</th>
-                    </tr>
-                </thead>
-                <tbody>
-                    {% for order_id, order in orders.items() %}
-                    <tr class="order-row" 
-                        data-order-id="{{ order_id }}"
-                        data-status="{{ order.status }}"
-                        data-date="{{ order.orderDate }}"
-                        data-price="{{ order.totalPrice }}">
-                        <td>{{ order_id }}</td>
-                        <td>{{ order.orderDate }}</td>
-                        <td>
-                            {% if order.status == 'PENDING' %}
-                            <span class="badge bg-warning text-dark">Pending</span>
-                            {% elif order.status == 'PAID' %}
-                            <span class="badge bg-success">Paid</span>
-                            {% elif order.status == 'CANCELLED' %}
-                            <span class="badge bg-danger">Cancelled</span>
-                            {% else %}
-                            <span class="badge bg-secondary">{{ order.status }}</span>
-                            {% endif %}
-                        </td>
-                        <td>
-                            {% if order.items is mapping %}
-                                {{ order.items|length }}
-                            {% elif order.items is iterable and order.items is not string %}
-                                {{ order.items|length }}
-                            {% else %}
-                                0
-                            {% endif %}
-                        </td>
-                        <td>
-                            {% if order.totalPrice is defined %}
-                                ${{ "%.2f"|format(order.totalPrice|float) }}
-                            {% else %}
-                                $0.00
-                            {% endif %}
-                        </td>
-                        <td>{{ order.userUId }}</td>
-                        <td>
+    <!-- Orders Display -->
+    {% if orders %}
+    <div class="table-responsive">
+        <table class="table table-hover" id="ordersTable">
+            <thead class="table-light">
+                <tr>
+                    <th>Order ID</th>
+                    <th>Date</th>
+                    <th>Status</th>
+                    <th>Total Items</th>
+                    <th>Total Price</th>
+                    <th>User ID</th>
+                    <th>Actions</th>
+                </tr>
+            </thead>
+            <tbody>
+                {% for order_id, order in orders.items() %}
+                <tr class="order-row" 
+                    data-order-id="{{ order_id }}"
+                    data-status="{{ order.get('status', '') }}"
+                    data-date="{{ order.get('orderDate', '') }}"
+                    data-price="{{ order.get('totalPrice', 0) }}">
+                    <td>{{ order_id }}</td>
+                    <td>
+                        {% if order.get('orderDate') %}
+                            {{ order.orderDate | datetime }}
+                        {% else %}
+                            No date
+                        {% endif %}
+                    </td>
+                    <td>
+                        {% if order.get('status') == 'PENDING' %}
+                        <span class="badge bg-warning text-dark">Pending</span>
+                        {% elif order.get('status') == 'PAID' %}
+                        <span class="badge bg-success">Paid</span>
+                        {% elif order.get('status') == 'CANCELLED' %}
+                        <span class="badge bg-danger">Cancelled</span>
+                        {% else %}
+                        <span class="badge bg-secondary">{{ order.get('status', 'Unknown') }}</span>
+                        {% endif %}
+                    </td>
+                    <td>
+                        {% if order.get('items') is mapping %}
+                            {{ order.get('items')|length }}
+                        {% elif order.get('items') is iterable and order.get('items') is not string %}
+                            {{ order.get('items')|length }}
+                        {% else %}
+                            0
+                        {% endif %}
+                    </td>
+                    <td>${{ "%.2f"|format(order.get('totalPrice', 0)|float) }}</td>
+                    <td>{{ order.get('userUId', 'Unknown') }}</td>
+                    <td>
+                        <div class="btn-group">
                             <a href="{{ url_for('get_order_details', order_id=order_id) }}" 
                                class="btn btn-sm btn-outline-primary">
                                 <i class="bi bi-eye"></i> View
                             </a>
-                        </td>
-                    </tr>
-                    {% endfor %}
-                </tbody>
-            </table>
-        </div>
-        {% else %}
-        <div class="alert alert-info" role="alert">
-            No orders available.
-        </div>
-        {% endif %}
-
-        <!-- No Results Message -->
-        <div id="noResults" class="alert alert-info d-none" role="alert">
-            No orders found matching your criteria.
-        </div>
+                            {% if order.get('status') == 'CANCELLED' %}
+                            <button type="button" 
+                                    class="btn btn-sm btn-outline-danger"
+                                    data-bs-toggle="modal"
+                                    data-bs-target="#deleteModal"
+                                    data-order-id="{{ order_id }}"
+                                    data-order-date="{{ order.get('orderDate', '') | datetime }}">
+                                <i class="bi bi-trash"></i> Delete
+                            </button>
+                            {% endif %}
+                        </div>
+                    </td>
+                </tr>
+                {% endfor %}
+            </tbody>
+        </table>
+    </div>
+    {% else %}
+    <div class="alert alert-info" role="alert">
+        No orders available.
+    </div>
     {% endif %}
+
+    <!-- No Results Message -->
+    <div id="noResults" class="alert alert-info d-none" role="alert">
+        No orders found matching your criteria.
+    </div>
+</div>
+
+<!-- Delete Confirmation Modal -->
+<div class="modal fade" id="deleteModal" tabindex="-1" aria-labelledby="deleteModalLabel" aria-hidden="true">
+    <div class="modal-dialog">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h5 class="modal-title" id="deleteModalLabel">Confirm Deletion</h5>
+                <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+            </div>
+            <div class="modal-body">
+                Are you sure you want to delete the cancelled order from "<span id="orderDate"></span>"?
+                <p class="text-danger mt-2">
+                    <i class="bi bi-exclamation-triangle"></i> 
+                    This action cannot be undone.
+                </p>
+            </div>
+            <div class="modal-footer">
+                <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cancel</button>
+                <form id="deleteForm" method="POST" style="display: inline;">
+                    <button type="submit" class="btn btn-danger">
+                        <i class="bi bi-trash"></i> Delete Order
+                    </button>
+                </form>
+            </div>
+        </div>
+    </div>
 </div>
 {% endblock %}
 
@@ -136,7 +181,7 @@
         padding: 0.35em 0.65em;
     }
 
-    .btn-sm {
+    .btn-group .btn {
         padding: 0.25rem 0.5rem;
         font-size: 0.875rem;
     }
@@ -223,8 +268,22 @@ document.getElementById('searchInput').addEventListener('keyup', function(event)
     }
 });
 
-// Initial sort
+// Delete modal functionality
 document.addEventListener('DOMContentLoaded', function() {
+    const deleteModal = document.getElementById('deleteModal');
+    const orderDateSpan = document.getElementById('orderDate');
+    const deleteForm = document.getElementById('deleteForm');
+
+    deleteModal.addEventListener('show.bs.modal', function(event) {
+        const button = event.relatedTarget;
+        const orderId = button.getAttribute('data-order-id');
+        const orderDate = button.getAttribute('data-order-date');
+        
+        orderDateSpan.textContent = orderDate;
+        deleteForm.action = `/orders/${orderId}/delete`;
+    });
+
+    // Initial sort
     sortOrders();
 });
 </script>
