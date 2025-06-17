@@ -224,6 +224,99 @@ def add_category():
                             error=f'Error adding category: {str(e)}')
     
 
+@app.route('/categories/<category_id>/edit', methods=['GET'])
+def edit_category_form(category_id):
+    """Display the form to edit an existing category"""
+    try:
+        # Get category details
+        category_ref = db.reference(f'Data/Categories/{category_id}')
+        category = category_ref.get()
+        
+        if not category:
+            return render_template('Categories/add_category.html', 
+                                error='Category not found')
+            
+        # Convert image path to web URL
+        category['Image'] = get_image_path(category['Image'])
+            
+        return render_template('Categories/add_category.html',
+                             category=category)
+    except Exception as e:
+        print(f"Error showing edit category form: {e}")
+        import traceback
+        print(f"Traceback: {traceback.format_exc()}")
+        return render_template('Categories/add_category.html', 
+                            error=str(e))
+
+@app.route('/categories/<category_id>/update', methods=['POST'])
+def update_category(category_id):
+    """Handle the form submission to update an existing category"""
+    try:
+        # Get form data
+        category_name = request.form.get('categoryName')
+        season = request.form.get('season')
+        
+        # Validate required fields
+        if not all([category_name, season]):
+            return render_template('Categories/add_category.html', 
+                                error='All fields are required')
+
+        # Get current category data
+        category_ref = db.reference(f'Data/Categories/{category_id}')
+        current_category = category_ref.get()
+        
+        if not current_category:
+            return render_template('Categories/add_category.html', 
+                                error='Category not found')
+
+        # Handle image upload if provided
+        image_path = current_category['Image']  # Keep existing image by default
+        if 'categoryImage' in request.files and request.files['categoryImage'].filename:
+            file = request.files['categoryImage']
+            
+            if not allowed_file(file.filename):
+                return render_template('Categories/add_category.html',
+                                    error='Invalid file type. Only PNG and JPEG allowed',
+                                    category=current_category)
+
+            # Save the image
+            filename = secure_filename(file.filename)
+            base_name = os.path.splitext(filename)[0]
+            file_path = os.path.join(app.config['UPLOAD_FOLDER'], f"{base_name}.png")
+            
+            # Create directory if it doesn't exist
+            os.makedirs(app.config['UPLOAD_FOLDER'], exist_ok=True)
+            
+            # Save and convert to PNG if necessary
+            file.save(file_path)
+            image_path = f"drawable/{base_name}"
+
+        # Update category in Firebase
+        updated_category = {
+            'Id': category_id,  # Keep the same ID
+            'Name': category_name,
+            'Season': season.lower(),
+            'Image': image_path
+        }
+        
+        category_ref.set(updated_category)
+        
+        # Convert image path to web URL for display
+        updated_category['Image'] = get_image_path(image_path)
+        
+        return render_template('Categories/add_category.html',
+                            success='Category updated successfully',
+                            category=updated_category)
+
+    except Exception as e:
+        print(f"Error updating category: {e}")
+        import traceback
+        print(f"Traceback: {traceback.format_exc()}")
+        return render_template('Categories/add_category.html',
+                            error=f'Error updating category: {str(e)}',
+                            category=current_category)
+
+
 #################################################################################################################################
 #                                         ITEMS REQUEST MAPPING                                                                 #
 #################################################################################################################################
@@ -365,6 +458,129 @@ def add_item(category_id):
                             category_id=category_id)
 
 
+@app.route('/categories/<category_id>/items/<item_id>/edit', methods=['GET'])
+def edit_item_form(category_id, item_id):
+    """Display the form to edit an existing item"""
+    try:
+        # Get category details
+        category_ref = db.reference(f'Data/Categories/{category_id}')
+        category = category_ref.get()
+        
+        if not category:
+            return render_template('Categories/add_item.html', 
+                                error='Category not found')
+            
+        # Get item details
+        item_ref = db.reference(f'Data/CategoriesItems/{category_id}/{item_id}')
+        item = item_ref.get()
+        
+        if not item:
+            return render_template('Categories/add_item.html',
+                                error='Item not found',
+                                category_id=category_id,
+                                category_name=category['Name'])
+            
+        # Convert image path to web URL
+        item['Image'] = get_image_path(item['Image'])
+            
+        return render_template('Categories/add_item.html',
+                             category_id=category_id,
+                             category_name=category['Name'],
+                             item=item)
+    except Exception as e:
+        print(f"Error showing edit item form: {e}")
+        import traceback
+        print(f"Traceback: {traceback.format_exc()}")
+        return render_template('Categories/add_item.html',
+                            error=str(e))
+
+@app.route('/categories/<category_id>/items/<item_id>/update', methods=['POST'])
+def update_item(category_id, item_id):
+    """Handle the form submission to update an existing item"""
+    try:
+        # Get form data
+        item_name = request.form.get('itemName')
+        description = request.form.get('description')
+        price = request.form.get('price')
+        unit = request.form.get('unit')
+        inventory = request.form.get('inventory')
+        
+        # Validate required fields
+        if not all([item_name, description, price, unit, inventory]):
+            return render_template('Categories/add_item.html',
+                                error='All fields are required',
+                                category_id=category_id)
+
+        # Get current item data
+        item_ref = db.reference(f'Data/CategoriesItems/{category_id}/{item_id}')
+        current_item = item_ref.get()
+        
+        if not current_item:
+            return render_template('Categories/add_item.html',
+                                error='Item not found',
+                                category_id=category_id)
+
+        # Handle image upload if provided
+        image_path = current_item['Image']  # Keep existing image by default
+        if 'itemImage' in request.files and request.files['itemImage'].filename:
+            file = request.files['itemImage']
+            
+            if not allowed_file(file.filename):
+                return render_template('Categories/add_item.html',
+                                    error='Invalid file type. Only PNG and JPEG allowed',
+                                    category_id=category_id,
+                                    item=current_item)
+
+            # Save the image
+            filename = secure_filename(file.filename)
+            base_name = os.path.splitext(filename)[0]
+            file_path = os.path.join(app.config['UPLOAD_FOLDER'], f"{base_name}.png")
+            
+            # Create directory if it doesn't exist
+            os.makedirs(app.config['UPLOAD_FOLDER'], exist_ok=True)
+            
+            # Save and convert to PNG if necessary
+            file.save(file_path)
+            image_path = f"drawable/{base_name}"
+
+        # Update item in Firebase
+        updated_item = {
+            'Id': item_id,  # Keep the same ID
+            'Name': item_name,
+            'Description': description,
+            'Price': float(price),
+            'Unit': unit,
+            'Inventory': int(inventory),
+            'Image': image_path,
+            'Type': category_id,
+            'Quantity': current_item.get('Quantity', 0)  # Keep existing quantity or default to 0
+        }
+        
+        item_ref.set(updated_item)
+        
+        # Get category name for display
+        category_ref = db.reference(f'Data/Categories/{category_id}')
+        category = category_ref.get()
+        
+        # Convert image path to web URL for display
+        updated_item['Image'] = get_image_path(image_path)
+        
+        return render_template('Categories/add_item.html',
+                            success='Item updated successfully',
+                            category_id=category_id,
+                            category_name=category['Name'],
+                            item=updated_item)
+
+    except Exception as e:
+        print(f"Error updating item: {e}")
+        import traceback
+        print(f"Traceback: {traceback.format_exc()}")
+        return render_template('Categories/add_item.html',
+                            error=f'Error updating item: {str(e)}',
+                            category_id=category_id,
+                            item=current_item)
+    
+    
 #################################################################################################################################
 #                                         COUPONS REQUEST MAPPING                                                               #
 #################################################################################################################################
@@ -475,6 +691,102 @@ def add_coupon():
                             error=f'Error adding coupon: {str(e)}')
 
 
+@app.route('/coupons/<coupon_id>/edit', methods=['GET'])
+def edit_coupon_form(coupon_id):
+    """Display the form to edit an existing coupon"""
+    try:
+        # Get coupon details
+        coupon_ref = db.reference(f'Data/Coupons/{coupon_id}')
+        coupon = coupon_ref.get()
+        
+        if not coupon:
+            return render_template('Coupons/add_coupon.html', 
+                                error='Coupon not found')
+            
+        return render_template('Coupons/add_coupon.html',
+                             coupon=coupon)
+    except Exception as e:
+        print(f"Error showing edit coupon form: {e}")
+        import traceback
+        print(f"Traceback: {traceback.format_exc()}")
+        return render_template('Coupons/add_coupon.html',
+                             error=str(e))
+
+@app.route('/coupons/<coupon_id>/update', methods=['POST'])
+def update_coupon(coupon_id):
+    """Handle the form submission to update an existing coupon"""
+    try:
+        # Get form data
+        coupon_id = request.form.get('couponId')
+        description = request.form.get('description')
+        coupon_type = request.form.get('couponType')
+        discount_value = request.form.get('discountValue')
+        start_date = request.form.get('startDate')
+        end_date = request.form.get('endDate')
+        product_id = request.form.get('productId')
+        
+        # Validate required fields
+        if not all([coupon_id, description, coupon_type, discount_value, start_date, end_date, product_id]):
+            return render_template('Coupons/add_coupon.html',
+                                error='All fields are required')
+
+        # Validate discount value
+        try:
+            discount_value = float(discount_value)
+            if coupon_type == 'percentage' and (discount_value <= 0 or discount_value > 100):
+                return render_template('Coupons/add_coupon.html',
+                                    error='Percentage discount must be between 0 and 100')
+            elif coupon_type == 'fixed' and discount_value <= 0:
+                return render_template('Coupons/add_coupon.html',
+                                    error='Fixed discount must be greater than 0')
+        except ValueError:
+            return render_template('Coupons/add_coupon.html',
+                                error='Invalid discount value')
+
+        # Validate dates
+        try:
+            start = datetime.strptime(start_date, '%Y-%m-%d')
+            end = datetime.strptime(end_date, '%Y-%m-%d')
+            if end < start:
+                return render_template('Coupons/add_coupon.html',
+                                    error='End date must be after start date')
+        except ValueError:
+            return render_template('Coupons/add_coupon.html',
+                                error='Invalid date format')
+
+        # Validate product ID exists
+        category_id, item_id = product_id.split('/')
+        item_ref = db.reference(f'Data/CategoriesItems/{category_id}/{item_id}')
+        if not item_ref.get():
+            return render_template('Coupons/add_coupon.html',
+                                error='Product ID does not exist')
+
+        # Update coupon in Firebase
+        updated_coupon = {
+            'Id': coupon_id,
+            'description': description,
+            'couponType': coupon_type,
+            'discountValue': discount_value,
+            'startDate': start_date,
+            'endDate': end_date,
+            'productId': product_id
+        }
+        
+        coupon_ref = db.reference(f'Data/Coupons/{coupon_id}')
+        coupon_ref.set(updated_coupon)
+        
+        return render_template('Coupons/add_coupon.html',
+                             success='Coupon updated successfully',
+                             coupon=updated_coupon)
+
+    except Exception as e:
+        print(f"Error updating coupon: {e}")
+        import traceback
+        print(f"Traceback: {traceback.format_exc()}")
+        return render_template('Coupons/add_coupon.html',
+                             error=f'Error updating coupon: {str(e)}')
+    
+    
 #################################################################################################################################
 #                                         LIKED ITEMS REQUEST MAPPING                                                           #
 #################################################################################################################################
@@ -805,7 +1117,7 @@ def get_user_orders(user_id):
         import traceback
         print(f"Traceback: {traceback.format_exc()}")
         return render_template('Users/user_orders.html', error=str(e))
-    
+
 
 if __name__ == "__main__":
     app.run(debug=True)
